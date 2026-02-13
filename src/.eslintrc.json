@@ -11,7 +11,7 @@
     },
     "rules": {
         "no-unused-vars": [
-            "warn",
+            "error",
             {
                 "argsIgnorePattern": "^_",
                 "varsIgnorePattern": "^_",
@@ -21,7 +21,7 @@
         "no-console": "off",
         "indent": [
             "warn",
-            2
+            4
         ],
         "linebreak-style": [
             "warn",

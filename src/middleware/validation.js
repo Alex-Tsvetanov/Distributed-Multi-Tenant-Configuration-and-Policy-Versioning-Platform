@@ -79,7 +79,7 @@ const validate = (schemaName) => {
         }
 
         const { error } = schema.validate(req.body, { abortEarly: false });
-        
+
         if (error) {
             const messages = error.details.map(d => d.message).join(', ');
             return res.status(400).json({
@@ -92,5 +92,10 @@ const validate = (schemaName) => {
         next();
     };
 };
+
+// Add pre-bound middlewares for easier usage in routes
+Object.keys(schemas).forEach(schemaName => {
+    validate[schemaName] = validate(schemaName);
+});
 
 module.exports = { validate, schemas };

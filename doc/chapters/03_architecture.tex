@@ -1,0 +1,355 @@
+% ============================================================================
+% Глава 3: Архитектура и реализация
+% ============================================================================
+
+\section{АРХИТЕКТУРА И РЕАЛИЗАЦИЯ}
+
+\subsection{Обща архитектура}
+
+Системата следва многослойна архитектура с ясно разделение на отговорностите между отделните компоненти \cite{martin2017clean}. Фигура \ref{fig:architecture} представлява архитектурната диаграма на системата, илюстрираща основните компоненти и връзките между тях.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.5cm,
+    box/.style={rectangle, draw, fill=blue!10, minimum width=3.5cm, minimum height=1cm, align=center, font=\small},
+    db/.style={cylinder, shape border rotate=90, aspect=0.3, draw, fill=green!10, minimum width=2cm, minimum height=1.5cm, align=center, font=\small},
+    client/.style={rectangle, draw, fill=yellow!10, minimum width=2.5cm, minimum height=1cm, align=center, font=\small},
+    arrow/.style={->, thick}
+]
+
+\node[client] (client) {API Clients\\(CLI, Web, CI/CD)};
+
+\node[box, right=2.5cm of client] (api) {REST API\\Express.js};
+
+\node[box, right=2.5cm of api] (services) {Business Logic\\Services};
+
+\node[db, below=1.5cm of api] (mongo) {MongoDB\\Document Store};
+
+\draw[arrow] (client) -- node[above, font=\footnotesize] {HTTPS/JSON} (api);
+\draw[arrow] (api) -- node[above, font=\footnotesize] {calls} (services);
+\draw[arrow] (services) -- node[right, font=\footnotesize] {queries} (mongo);
+
+\end{tikzpicture}
+\caption{Архитектурна диаграмата на системата}
+\label{fig:architecture}
+\end{figure}
+
+Архитектурата се състои от три основни слоя. Първият слой е REST API слоят, изграден с Express.js, който обработва HTTP заявки от клиенти и осигурява маршрутизация, валидация и аутентикация. Вторият слой е бизнес логиката, реализирана чрез сервизни класове, които съдържат основната функционалност за управление на конфигурации и версиониране. Третият слой е слоят за достъп до данни, който използва MongoDB за съхранение и извличане на документи.
+
+\subsection{Моделиране на данните}
+
+Системата използва четири основни колекции за съхранение на данни, всяка със специфично предназначение и структура, оптимизирана за конкретни операции.
+
+\subsubsection{Колекция tenants}
+
+Колекцията tenants съхранява информация за организациите, използващи системата, и осигурява изолация на данните между различни клиенти. Необходима е \textbf{пълна логическа изолация на данни} между различни организации чрез мулти-тенант архитектура, осигуряваща сигурност и конфиденциалност \cite{multitenant_architecture}. Листинг 3.1 представя примерна структура на документ от тази колекция.
+\newpage
+\begin{lstlisting}[language=JavaScript, caption=Структура на Tenant документ]
+{
+    "_id": "tenantA",
+    "name": "Acme Corp",
+    "description": "Enterprise customer",
+    "settings": {
+        "maxConfigs": 100,
+        "maxVersionsPerConfig": 1000,
+        "retentionDays": 365
+    },
+    "isActive": true,
+    "createdAt": ISODate("2026-02-01T00:00:00Z"),
+    "updatedAt": ISODate("2026-02-01T00:00:00Z")
+}
+\end{lstlisting}
+
+Индексът \texttt{isActive: 1} осигурява бързо филтриране на активни tenants при заявки за административни операции.
+
+\subsubsection{Колекция configs}
+
+Колекцията configs съхранява метаданни за конфигурациите и указатели към активните версии за всяка среда. Това е централната колекция за управление на конфигурации, която поддържа информация за имената, средите, таговете и архивния статус. Листинг 3.2 представя примерна структура.
+
+\begin{lstlisting}[language=JavaScript, caption=Структура на Config документ]
+{
+    "_id": ObjectId("65b8a..."),
+    "tenantId": "tenantA",
+    "name": "payment-service",
+    "description": "Payment gateway configuration",
+    "environments": ["dev", "staging", "prod"],
+    "activeVersions": {
+        "dev": 12,
+        "staging": 10,
+        "prod": 8
+    },
+    "tags": ["critical", "payments"],
+    "isArchived": false,
+    "createdBy": "admin@acme.com",
+    "createdAt": ISODate("2026-02-01T10:00:00Z"),
+    "updatedAt": ISODate("2026-02-13T15:30:00Z")
+}
+\end{lstlisting}
+
+Колекцията configs използва няколко индекса за оптимизация на заявките. Съставният индекс \texttt{tenantId: 1, name: 1} осигурява уникалност на имената на конфигурациите в рамките на един tenant. Индексът \texttt{tenantId: 1, isArchived: 1} ускорява заявките за списъци с филтриране по архивен статус. Индексът \texttt{tags: 1} поддържа филтриране по тагове.
+
+\subsubsection{Колекция config\_versions}
+
+Колекцията config\_versions представлява сърцето на системата за версиониране, съхранявайки неизменяеми версии на конфигурации с криптографски контролни суми. Всяка версия е самостоятелен документ, който съдържа пълните данни на конфигурацията за конкретна версия. Листинг 3.3 представя структурата на документ.
+
+\begin{lstlisting}[language=JavaScript, caption=Структура на ConfigVersion документ]
+{
+    "_id": ObjectId("65b8b..."),
+    "configId": ObjectId("65b8a..."),
+    "tenantId": "tenantA",
+    "version": 12,
+    "branch": "main",
+    "parentVersion": 11,
+    "data": {
+        "retryPolicy": {
+            "maxRetries": 5,
+            "backoff": "exponential",
+            "initialDelay": 1000
+        },
+        "featureFlags": {
+            "newCheckout": true,
+            "betaPayments": false,
+            "fraudDetection": true
+        },
+        "rateLimits": {
+            "perMinute": 1200,
+            "burst": 200
+        },
+        "providers": ["stripe", "paypal"]
+    },
+    "checksum": "a3f7c8...e2d9b1",
+    "changeLog": "Increased retry limit and added fraud detection",
+    "createdBy": "admin@acme.com",
+    "createdAt": ISODate("2026-02-13T15:30:00Z"),
+    "isArchived": false
+}
+\end{lstlisting}
+
+Критичните индекси за тази колекция са дефинирани както следва. Листинг 3.4 представя дефинициите на индексите.
+
+\begin{lstlisting}[language=JavaScript, caption=Дефиниции на индекси за config\_versions]
+db.config_versions.createIndex({ configId: 1, version: -1 })
+db.config_versions.createIndex({ tenantId: 1, branch: 1 })
+db.config_versions.createIndex({ createdAt: -1 })
+db.config_versions.createIndex({ checksum: 1 })
+\end{lstlisting}
+
+Съставният индекс \texttt{configId: 1, version: -1} е от особено значение, тъй като осигурява константна сложност при достъп до конкретна версия и ефективно сортиране по версия в низходящ ред. Индексът по контролна сума позволява бърза проверка за съществуващи версии с идентично съдържание.
+
+\subsubsection{Колекция audit\_logs}
+
+Колекцията audit\_logs поддържа непроменяем запис на всички операции, извършвани върху конфигурациите. Този одитен запис е критичен за съответствие с регулаторни изисквания и за проследяване на промените. Листинг 3.5 представя структурата.
+
+\begin{lstlisting}[language=JavaScript, caption=Структура на AuditLog документ]
+{
+    "_id": ObjectId("65b8c..."),
+    "entityType": "config",
+    "entityId": "65b8a...",
+    "tenantId": "tenantA",
+    "action": "ROLLBACK",
+    "performedBy": "admin@acme.com",
+    "performedAt": ISODate("2026-02-13T16:00:00Z"),
+    "metadata": {
+        "environment": "prod",
+        "fromVersion": 12,
+        "toVersion": 10,
+        "reason": "Fraud detection causing latency"
+    },
+    "ipAddress": "192.168.1.100",
+    "userAgent": "Mozilla/5.0..."
+}
+\end{lstlisting}
+
+Индексите за одитни заявки са дефинирани както следва в листинг 3.6.
+
+\begin{lstlisting}[language=JavaScript, caption=Индекси за audit\_logs]
+db.audit_logs.createIndex({ entityId: 1, performedAt: -1 })
+db.audit_logs.createIndex({ tenantId: 1, performedAt: -1 })
+db.audit_logs.createIndex({ action: 1, performedAt: -1 })
+db.audit_logs.createIndex({ performedBy: 1, performedAt: -1 })
+\end{lstlisting}
+
+\subsection{Основни операции}
+
+\subsubsection{Създаване на нова версия}
+
+Алгоритъмът за създаване на версия следва последователност от стъпки, които осигуряват цялостност и проследяемост на данните. Процесът започва с валидация на входните данни чрез Joi схема, която проверява структурата и типовете на JSON конфигурацията. Следваща стъпка е автентикация и авторизация чрез JWT токени и проверка на RBAC роли. Системата извлича текущата версия за полето parentVersion, което създава връзка във версионната история. След това се изчислява SHA256 контролната сума на данните за гарантиране на неизменяемост. Автоматично се генерира changeLog чрез сравнение с предишната версия. Новият документ се записва атомарно в базата данни и се създава одитен запис. Листинг 3.7 представя имплементацията на сервиза за създаване на версии.
+
+\begin{lstlisting}[language=JavaScript, caption=Имплементация на създаване на версия]
+class VersioningService {
+    static async createVersion({
+        configId, tenantId, data, branch,
+        parentVersion, changeLog, createdBy
+    }) {
+        const nextVersion = await ConfigVersion
+            .getNextVersion(configId);
+        
+        const version = new ConfigVersion({
+            configId,
+            tenantId,
+            version: nextVersion,
+            branch,
+            parentVersion: parentVersion || 
+                await this.getCurrentVersion(configId, branch),
+            data,
+            changeLog: changeLog || 
+                await this.generateChangeLog(configId, data),
+            createdBy
+        });
+        
+        await version.save();
+        await AuditService.log({ ... });
+        
+        return version;
+    }
+}
+\end{lstlisting}
+
+\subsubsection{Операция за връщане към предишна версия}
+
+Операцията rollback променя само указателя в полето activeVersions, без да изтрива данни, което осигурява моментално връщане към стабилно състояние. Този подход запазва пълната история на версиите и позволява бъдещи връщания към по-нови версии при необходимост. Листинг 3.8 представя имплементацията.
+
+\begin{lstlisting}[language=JavaScript, caption=Имплементация на rollback операция]
+static async rollback({
+    configId, tenantId, environment, 
+    targetVersion, performedBy, reason
+}) {
+    const config = await Config.findOne({ 
+        _id: configId, tenantId 
+    });
+    
+    const currentVersion = config.activeVersions[environment];
+    config.activeVersions[environment] = targetVersion;
+    await config.save();
+    
+    await AuditService.log({
+        entityType: 'config',
+        action: 'ROLLBACK',
+        metadata: {
+            environment,
+            fromVersion: currentVersion,
+            toVersion: targetVersion,
+            reason
+        }
+    });
+}
+\end{lstlisting}
+
+Времевата сложност на операцията е константна, тъй като включва единствено актуализация на config документ с промяна на едно поле във вграден обект.
+
+\subsubsection{Diff алгоритъм и сравнение на версии}
+
+Diff алгоритъмът използва библиотеката deep-diff за структурно сравнение на JSON обекти. Алгоритъмът обхожда дълбоко вложените структури и идентифицира добавени, изтрити и модифицирани полета. Листинг 3.9 представя имплементацията на Diff сервиза.
+
+\begin{lstlisting}[language=JavaScript, caption=Имплементация на diff алгоритъм]
+class DiffService {
+    static computeDiff(oldData, newData) {
+        const differences = deepDiff.diff(oldData, newData);
+        
+        return {
+            hasChanges: !!differences,
+            changes: differences?.map(diff => ({
+                type: this.getChangeType(diff),
+                path: diff.path?.join('.'),
+                oldValue: diff.lhs,
+                newValue: diff.rhs
+            })) || [],
+            summary: this.generateSummary(differences)
+        };
+    }
+    
+    static getChangeType(diff) {
+        if (diff.kind === 'N') return 'added';
+        if (diff.kind === 'D') return 'deleted';
+        if (diff.kind === 'E') return 'modified';
+        return 'unknown';
+    }
+}
+\end{lstlisting}
+
+\subsection{Примери за агрегационни заявки}
+
+MongoDB агрегационният pipeline предоставя мощни възможности за анализ на данните. Листинг 3.10 представя заявка за статистика по месеци, която групира версиите по година и месец на създаване.
+
+\begin{lstlisting}[language=JavaScript, caption=Статистика по месеци]
+db.config_versions.aggregate([
+    { $match: { tenantId: "tenantA" } },
+    {
+        $group: {
+            _id: {
+                year: { $year: "$createdAt" },
+                month: { $month: "$createdAt" }
+            },
+            count: { $sum: 1 }
+        }
+    },
+    { $sort: { "_id.year": -1, "_id.month": -1 } }
+])
+\end{lstlisting}
+
+Листинг 3.11 представя заявка за извличане на последната версия за всяка конфигурация чрез групиране и избор на първи елемент след сортиране.
+
+\begin{lstlisting}[language=JavaScript, caption=Заявка за последни версии]
+db.config_versions.aggregate([
+    { $match: { tenantId: "tenantA" } },
+    { $sort: { configId: 1, version: -1 } },
+    {
+        $group: {
+            _id: "$configId",
+            latestVersion: { $first: "$version" },
+            data: { $first: "$data" },
+            createdAt: { $first: "$createdAt" }
+        }
+    }
+])
+\end{lstlisting}
+
+\subsection{Стратегия за шардиране}
+
+За production deployment с множество tenants се препоръчва използване на shard key по tenantId. Този подход осигурява изолация на данните, като всички данни на даден tenant се съхраняват на един shard, което подобрява сигурността и опростява backup операциите. Разпределението на различни tenants по различни shards осигурява балансирано натоварване. Заявките, филтриращи по tenantId, попадат на един shard, което елиминира необходимостта от scatter-gather операции. Листинг 3.12 представя конфигурацията за шардиране.
+
+\begin{lstlisting}[language=JavaScript, caption=Конфигурация за шардиране]
+sh.enableSharding("config_versioning")
+sh.shardCollection(
+    "config_versioning.config_versions", 
+    { tenantId: 1, configId: 1 }
+)
+\end{lstlisting}
+
+\subsection{Имплементация на сигурност}
+
+\subsubsection{Контрол на достъп базиран на роли}
+
+Системата използва модел за контрол на достъп базиран на роли (RBAC), който дефинира три основни роли с различни нива на привилегии. Таблица 3.1 представя ролевия модел.
+
+\begin{table}[H]
+\centering
+\caption{Ролева модел за контрол на достъп}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Роля} & \textbf{Tenant} & \textbf{Config} & \textbf{Version} \\
+\hline
+admin & CRUD & CRUD + Archive & CRUD + Rollback \\
+\hline
+editor & Read & CRUD & CRUD \\
+\hline
+viewer & Read & Read & Read \\
+\hline
+\end{tabular}
+\end{table}
+
+Ролята admin притежава пълни права за управление на tenants, конфигурации и версии, включително архивиране и rollback операции. Ролята editor може да създава и редактира конфигурации и версии, но няма права за административни операции върху tenants или rollback. Ролята viewer има само права за четене на всички ресурси.
+
+\subsubsection{Ограничаване на честотата на заявките}
+
+Защитата срещу злоупотреба се реализира чрез ограничаване на броя заявки от един IP адрес или tenant в определен времеви прозорец, като се използва JWT за автентикация \cite{jwt_spec}. Листинг 3.13 представя конфигурацията.
+
+\begin{lstlisting}[language=JavaScript, caption=Конфигурация за rate limiting]
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,  // 15 минути
+    max: 1000,                 // заявки на IP
+    keyGenerator: (req) => 
+        req.user?.tenantId || req.ip
+});
+\end{lstlisting}

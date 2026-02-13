@@ -65,7 +65,7 @@ jobs:
     
     - name: Build Docker image
       run: |
-        docker build -t config-versioning-platform:${{ github.sha }} .
+        docker build -t config-versioning-platform:${{ github.sha }} -f src/Dockerfile ./src
         docker tag config-versioning-platform:${{ github.sha }} config-versioning-platform:latest
 
   security:

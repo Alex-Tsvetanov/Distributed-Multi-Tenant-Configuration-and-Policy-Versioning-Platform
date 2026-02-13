@@ -103,24 +103,29 @@ class ConfigController {
             const tenantId = req.params.tenantId || req.user.tenantId;
             const { name, description, environments, tags } = req.body;
 
-            const config = await Config.findOneAndUpdate(
-                { _id: configId, tenantId },
-                {
-                    name,
-                    description,
-                    environments,
-                    tags,
-                    updatedAt: new Date()
-                },
-                { new: true }
-            );
+            const existingConfig = await Config.findOne({ _id: configId, tenantId });
 
-            if (!config) {
+            if (!existingConfig) {
                 return res.status(404).json({
                     success: false,
                     error: 'Config not found'
                 });
             }
+
+            if (existingConfig.isArchived) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Cannot update an archived configuration. Restore it first.'
+                });
+            }
+
+            existingConfig.name = name || existingConfig.name;
+            existingConfig.description = description || existingConfig.description;
+            existingConfig.environments = environments || existingConfig.environments;
+            existingConfig.tags = tags || existingConfig.tags;
+            existingConfig.updatedAt = new Date();
+
+            await existingConfig.save();
 
             await AuditService.log({
                 entityType: 'config',
@@ -134,7 +139,7 @@ class ConfigController {
 
             res.json({
                 success: true,
-                data: config
+                data: existingConfig
             });
         } catch (error) {
             next(error);

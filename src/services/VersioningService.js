@@ -16,7 +16,15 @@ class VersioningService {
     }) {
         const config = await Config.findOne({ _id: configId, tenantId });
         if (!config) {
-            throw new Error('Config not found');
+            const error = new Error('Config not found');
+            error.status = 404;
+            throw error;
+        }
+
+        if (config.isArchived) {
+            const error = new Error('Cannot create versions for an archived configuration. Restore it first.');
+            error.status = 400;
+            throw error;
         }
 
         const nextVersion = await ConfigVersion.getNextVersion(configId);
@@ -29,10 +37,10 @@ class VersioningService {
                 configId,
                 branch
             }).sort({ version: -1 });
-            
+
             if (currentVersion) {
                 finalParentVersion = currentVersion.version;
-                
+
                 if (!changeLog) {
                     const diff = DiffService.computeDiff(currentVersion.data, data);
                     finalChangeLog = DiffService.generateChangeLog(diff);
@@ -84,7 +92,9 @@ class VersioningService {
     }) {
         const config = await Config.findOne({ _id: configId, tenantId });
         if (!config) {
-            throw new Error('Config not found');
+            const error = new Error('Config not found');
+            error.status = 404;
+            throw error;
         }
 
         const targetVersionDoc = await ConfigVersion.findOne({
@@ -94,7 +104,9 @@ class VersioningService {
         });
 
         if (!targetVersionDoc) {
-            throw new Error('Target version not found');
+            const error = new Error('Target version not found');
+            error.status = 404;
+            throw error;
         }
 
         const currentVersion = config.activeVersions[environment];
@@ -141,7 +153,9 @@ class VersioningService {
     }) {
         const config = await Config.findOne({ _id: configId, tenantId });
         if (!config) {
-            throw new Error('Config not found');
+            const error = new Error('Config not found');
+            error.status = 404;
+            throw error;
         }
 
         const existingBranch = await ConfigVersion.findOne({
@@ -151,7 +165,9 @@ class VersioningService {
         });
 
         if (existingBranch) {
-            throw new Error(`Branch '${newBranch}' already exists`);
+            const error = new Error(`Branch '${newBranch}' already exists`);
+            error.status = 400;
+            throw error;
         }
 
         const nextVersion = await ConfigVersion.getNextVersion(configId);
@@ -199,11 +215,21 @@ class VersioningService {
     }) {
         const config = await Config.findOne({ _id: configId, tenantId });
         if (!config) {
-            throw new Error('Config not found');
+            const error = new Error('Config not found');
+            error.status = 404;
+            throw error;
+        }
+
+        if (config.isArchived) {
+            const error = new Error('Cannot deploy an archived configuration. Restore it first.');
+            error.status = 400;
+            throw error;
         }
 
         if (!config.environments.includes(environment)) {
-            throw new Error(`Environment '${environment}' not configured for this config`);
+            const error = new Error(`Environment '${environment}' not configured for this config`);
+            error.status = 400;
+            throw error;
         }
 
         const versionDoc = await ConfigVersion.findOne({
@@ -213,7 +239,9 @@ class VersioningService {
         });
 
         if (!versionDoc) {
-            throw new Error('Version not found');
+            const error = new Error('Version not found');
+            error.status = 404;
+            throw error;
         }
 
         const previousVersion = config.activeVersions[environment];
@@ -268,10 +296,14 @@ class VersioningService {
         ]);
 
         if (!v1) {
-            throw new Error(`Version ${version1} not found`);
+            const error = new Error(`Version ${version1} not found`);
+            error.status = 404;
+            throw error;
         }
         if (!v2) {
-            throw new Error(`Version ${version2} not found`);
+            const error = new Error(`Version ${version2} not found`);
+            error.status = 404;
+            throw error;
         }
 
         const diff = DiffService.computeDiff(v1.data, v2.data);

@@ -1,0 +1,21 @@
+Starting MongoDB Memory Server...
+(node:32880) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+MongoDB Memory Server started at: mongodb://127.0.0.1:28003/
+Waiting for API to be ready...
+
+--- STARTING CHAOS TEST SCRIPT ---
+Running: Check Health (Neutral)... PASS (200)
+Running: Deploy version 99 to ghost config (Illogical)... EXPECTED FAILURE (404)
+Running: List Tenants with invalid token (Security check)... EXPECTED FAILURE (401)
+Running: Register Chaos Tenant (Logical)... PASS (201)
+Running: Create a Config (Logical)... PASS (201)
+Running: Rollback environment with ZERO deployments (Illogical)... EXPECTED FAILURE (404)
+Running: Create Version 1 (Logical)... PASS (201)
+Running: Compare Version 1 with Version 999 (Illogical)... EXPECTED FAILURE (404)
+Running: Deploy Version 1 to "dev" (Logical)... PASS (200)
+Running: Archive the Config (Logical/Orderly)... PASS (200)
+Running: Try to update an ARCHIVED config (Chaos)... EXPECTED FAILURE (400)
+Running: Rapid Fire 60 requests (Trigger Rate Limit)... EXPECTED FAILURE (429)
+
+--- CHAOS TEST COMPLETED ---

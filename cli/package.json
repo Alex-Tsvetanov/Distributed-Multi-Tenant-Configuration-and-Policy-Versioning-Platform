@@ -1,0 +1,17 @@
+{
+    "name": "tester-cli",
+    "version": "1.0.0",
+    "description": "Interactive CLI for testing the Configuration Platform",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "dependencies": {
+        "axios": "^1.6.2",
+        "chalk": "^4.1.2",
+        "dotenv": "^16.3.1",
+        "inquirer": "^8.2.6",
+        "jsonwebtoken": "^9.0.3",
+        "mongodb-memory-server": "^9.1.6"
+    }
+}

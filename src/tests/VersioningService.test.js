@@ -1,5 +1,5 @@
 const VersioningService = require('../services/VersioningService');
-const { Config, ConfigVersion } = require('../models');
+const { Config } = require('../models');
 
 describe('VersioningService', () => {
   let testConfig;
@@ -19,7 +19,7 @@ describe('VersioningService', () => {
   describe('createVersion', () => {
     it('should create a new version', async () => {
       const data = { feature: true, setting: 'value' };
-      
+
       const version = await VersioningService.createVersion({
         configId: testConfig._id,
         tenantId,
@@ -113,18 +113,15 @@ describe('VersioningService', () => {
   });
 
   describe('rollback', () => {
-    let version1;
-    let version2;
-
     beforeEach(async () => {
-      version1 = await VersioningService.createVersion({
+      await VersioningService.createVersion({
         configId: testConfig._id,
         tenantId,
         data: { version: 1 },
         createdBy: 'test@example.com',
       });
 
-      version2 = await VersioningService.createVersion({
+      await VersioningService.createVersion({
         configId: testConfig._id,
         tenantId,
         data: { version: 2 },
@@ -249,18 +246,15 @@ describe('VersioningService', () => {
   });
 
   describe('compareVersions', () => {
-    let version1;
-    let version2;
-
     beforeEach(async () => {
-      version1 = await VersioningService.createVersion({
+      await VersioningService.createVersion({
         configId: testConfig._id,
         tenantId,
         data: { feature: false, setting: 'old' },
         createdBy: 'test@example.com',
       });
 
-      version2 = await VersioningService.createVersion({
+      await VersioningService.createVersion({
         configId: testConfig._id,
         tenantId,
         data: { feature: true, setting: 'new', extra: 'added' },

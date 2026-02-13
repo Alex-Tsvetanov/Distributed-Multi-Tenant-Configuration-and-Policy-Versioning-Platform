@@ -4,7 +4,7 @@ const { AuditLog } = require('../models');
 class AuditController {
     static async getHistory(req, res, next) {
         try {
-            const { entityType, entityId } = req.params;
+            const { entityId } = req.params;
             const { page = 1, limit = 50, action } = req.query;
 
             const history = await AuditService.getHistory(entityId, {
